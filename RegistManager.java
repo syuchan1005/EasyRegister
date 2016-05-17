@@ -47,13 +47,13 @@ public class RegistManager {
 					this.getPlugin().getServer().getPluginManager()
 							.registerEvents((Listener) this.getInstance(clazz), this.getPlugin());
 				}
-				for(Method method : clazz.getMethods()) {
+				for (Method method : clazz.getMethods()) {
 					RegistManager.AddCommand addCommand = hasCommand(method);
-					if(addCommand != null) this.putMap(new Base(addCommand), method);
+					if (addCommand != null) this.putMap(new Base(addCommand), method);
 				}
 			}
 		} finally {
-			if(jar != null) jar.close();
+			if (jar != null) jar.close();
 		}
 	}
 
@@ -183,6 +183,7 @@ public class RegistManager {
 	}
 
 	private static Field commandMapField = null;
+
 	private SimpleCommandMap getCommandMap() throws ReflectiveOperationException {
 		Server server = this.getPlugin().getServer();
 		if (commandMapField == null) {
@@ -217,8 +218,10 @@ public class RegistManager {
 		}
 
 		private static Constructor<?> constructor;
+
 		public PluginCommand toPluginCommand(RegistManager manager) throws ReflectiveOperationException {
-			if(constructor == null) constructor = PluginCommand.class.getDeclaredConstructor(String.class, Plugin.class);
+			if (constructor == null)
+				constructor = PluginCommand.class.getDeclaredConstructor(String.class, Plugin.class);
 			constructor.setAccessible(true);
 			PluginCommand cmd = (PluginCommand) constructor.newInstance(this.getName(), manager.getPlugin());
 			cmd.setDescription(this.getDescription());
@@ -227,12 +230,12 @@ public class RegistManager {
 			cmd.setPermission(this.getPermission());
 			cmd.setPermissionMessage(this.getPermissionMessage());
 			cmd.setExecutor((sender, command, label, args) -> {
-					try {
-						return manager.run(sender, command, args);
-					} catch (ReflectiveOperationException e) {
-						e.printStackTrace();
-						return true;
-					}
+				try {
+					return manager.run(sender, command, args);
+				} catch (ReflectiveOperationException e) {
+					e.printStackTrace();
+					return true;
+				}
 			});
 			return cmd;
 		}
