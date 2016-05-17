@@ -4,8 +4,6 @@
  * http://opensource.org/licenses/mit-license.php
  */
 
-package co.honobono.honobonoserver.constructor;
-
 import org.bukkit.Server;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
