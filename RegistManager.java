@@ -11,7 +11,9 @@ import org.bukkit.command.PluginCommand;
 import org.bukkit.command.SimpleCommandMap;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.PluginManager;
 
+import java.io.File;
 import java.io.IOException;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -20,6 +22,8 @@ import java.lang.annotation.Target;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -30,21 +34,31 @@ import java.util.jar.JarFile;
 
 public class RegistManager {
 	private Plugin pl;
-	private Map<String, Map<Base, Method>> Commands = new HashMap<String, Map<Base, Method>>();
+	private Map<String, Map<Base, Method>> Commands = new HashMap<>();
 
 	public RegistManager(Plugin plugin) throws ReflectiveOperationException, IOException {
 		this.pl = plugin;
+		loadClasses(new File(plugin.getClass().getProtectionDomain().getCodeSource().getLocation().getFile()), true);
+	}
+
+	public RegistManager(Plugin plugin, File jarFile) throws ReflectiveOperationException, IOException {
+		this.pl = plugin;
+		loadClasses(jarFile, false);
+	}
+
+	public void loadClasses(File jarFile, boolean isPluginJar) throws IOException, ReflectiveOperationException {
 		JarFile jar = null;
 		try {
-			jar = new JarFile(this.getPlugin().getClass().getProtectionDomain().getCodeSource().getLocation().getFile());
+			jar = new JarFile(jarFile);
+			ClassLoader loader = this.getClass().getClassLoader();
+			if (!isPluginJar) loader = URLClassLoader.newInstance(new URL[]{jarFile.toURI().toURL()}, loader);
 			for (Enumeration<JarEntry> e = jar.entries(); e.hasMoreElements(); ) {
 				String className = e.nextElement().getName();
 				if (!className.endsWith(".class")) continue;
-				Class<?> clazz = Class.forName(className.replace('/', '.').substring(0, className.length() - 6));
-				if (hasListener(clazz)) {
-					this.getPlugin().getServer().getPluginManager()
-							.registerEvents((Listener) this.getInstance(clazz), this.getPlugin());
-				}
+				Class<?> clazz = loader.loadClass(className.replace('/', '.').substring(0, className.length() - 6));
+				PluginManager pluginManager = this.getPlugin().getServer().getPluginManager();
+				if (hasListener(clazz))
+					pluginManager.registerEvents((Listener) this.getInstance(clazz), this.getPlugin());
 				for (Method method : clazz.getMethods()) {
 					RegistManager.AddCommand addCommand = hasCommand(method);
 					if (addCommand != null) this.putMap(new Base(addCommand), method);
@@ -64,8 +78,8 @@ public class RegistManager {
 				if (e.getKey().getName().equalsIgnoreCase(command.getName()) && (e.getKey().getSubCommand().equals(sub)
 						|| e.getKey().getAliases().stream().anyMatch(a -> a.equalsIgnoreCase(sub)))) {
 					if (sender.hasPermission(e.getKey().getPermission())) {
-						return (boolean) e.getValue().invoke(this.getInstance(e.getValue().getDeclaringClass()), sender,
-								command, args);
+						return (boolean) e.getValue().invoke(this.getInstance(e.getValue().getDeclaringClass()),
+								sender, command, args);
 					} else {
 						sender.sendMessage(e.getKey().getPermissionMessage());
 						return true;
@@ -199,8 +213,7 @@ public class RegistManager {
 			this.setSubCommand(a.subCommand());
 		}
 
-		public Base(String command, String description, String usageMessage, List<String> aliases, String Permission,
-		            String PermissionMessage) {
+		public Base(String command, String description, String usageMessage, List<String> aliases, String Permission, String PermissionMessage) {
 			super(command, description, usageMessage, aliases);
 			this.setPermission(Permission);
 			this.setPermissionMessage(PermissionMessage);
@@ -241,16 +254,6 @@ public class RegistManager {
 		@Override
 		public String getName() {
 			return super.getName().toLowerCase();
-		}
-
-		@Override
-		public Base clone() {
-			try {
-				return (Base) super.clone();
-			} catch (CloneNotSupportedException e) {
-				e.printStackTrace();
-			}
-			return null;
 		}
 
 		@Override
