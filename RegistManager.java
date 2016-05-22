@@ -24,6 +24,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -35,6 +36,7 @@ import java.util.jar.JarFile;
 public class RegistManager {
 	private Plugin pl;
 	private Map<String, Map<Base, Method>> Commands = new HashMap<>();
+	private static List<File> addonFile = new ArrayList<>();
 
 	public RegistManager(Plugin plugin) throws ReflectiveOperationException, IOException {
 		this.pl = plugin;
@@ -47,6 +49,7 @@ public class RegistManager {
 	}
 
 	public void loadClasses(File jarFile, boolean isPluginJar) throws IOException, ReflectiveOperationException {
+		addonFile.add(jarFile);
 		JarFile jar = null;
 		try {
 			jar = new JarFile(jarFile);
@@ -133,6 +136,10 @@ public class RegistManager {
 		return this.pl;
 	}
 
+	public List<File> getAddonFile() {
+		return addonFile;
+	}
+
 	private Object getInstance(Class clazz) throws ReflectiveOperationException {
 		if (clazz.isInstance(this.getPlugin())) return this.getPlugin();
 		for (Constructor con : clazz.getDeclaredConstructors()) {
@@ -194,15 +201,15 @@ public class RegistManager {
 		boolean value() default true;
 	}
 
-	private static Field commandMapField = null;
+	private static Method commandMapMethod = null;
 
 	private SimpleCommandMap getCommandMap() throws ReflectiveOperationException {
 		Server server = this.getPlugin().getServer();
-		if (commandMapField == null) {
-			commandMapField = server.getClass().getDeclaredField("commandMap");
-			commandMapField.setAccessible(true);
+		if (commandMapMethod == null) {
+			commandMapMethod = server.getClass().getDeclaredMethod("getCommandMap");
+			commandMapMethod.setAccessible(true);
 		}
-		return (SimpleCommandMap) commandMapField.get(this.getPlugin().getServer());
+		return (SimpleCommandMap) commandMapMethod.invoke(server);
 	}
 
 	static class Base extends Command {
