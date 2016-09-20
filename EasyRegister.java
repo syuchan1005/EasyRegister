@@ -20,7 +20,6 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -33,17 +32,17 @@ import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
-public class RegistManager {
+public class EasyRegister {
 	private Plugin pl;
 	private Map<String, Map<Base, Method>> Commands = new HashMap<>();
 	private static List<File> addonFile = new ArrayList<>();
 
-	public RegistManager(Plugin plugin) throws ReflectiveOperationException, IOException {
+	public EasyRegister(Plugin plugin) throws ReflectiveOperationException, IOException {
 		this.pl = plugin;
 		loadClasses(new File(plugin.getClass().getProtectionDomain().getCodeSource().getLocation().getFile()), true);
 	}
 
-	public RegistManager(Plugin plugin, File jarFile) throws ReflectiveOperationException, IOException {
+	public EasyRegister(Plugin plugin, File jarFile) throws ReflectiveOperationException, IOException {
 		this.pl = plugin;
 		loadClasses(jarFile, false);
 	}
@@ -63,7 +62,7 @@ public class RegistManager {
 				if (hasListener(clazz))
 					pluginManager.registerEvents((Listener) this.getInstance(clazz), this.getPlugin());
 				for (Method method : clazz.getMethods()) {
-					RegistManager.AddCommand addCommand = hasCommand(method);
+					EasyRegister.AddCommand addCommand = hasCommand(method);
 					if (addCommand != null) this.putMap(new Base(addCommand), method);
 				}
 			}
@@ -78,8 +77,19 @@ public class RegistManager {
 			Map<Base, Method> map = Commands.get(command.getName().toLowerCase());
 			for (Map.Entry<Base, Method> e : map.entrySet()) {
 				String sub = args[0];
-				if (e.getKey().getName().equalsIgnoreCase(command.getName()) && (e.getKey().getSubCommand().equals(sub)
-						|| e.getKey().getAliases().stream().anyMatch(a -> a.equalsIgnoreCase(sub)))) {
+				if (e.getKey().getName().equalsIgnoreCase(command.getName()) &&
+						(e.getKey().getSubCommand().equals(sub) || e.getKey().getAliases().stream().anyMatch(a -> a.equalsIgnoreCase(sub)))) {
+					if (sender.hasPermission(e.getKey().getPermission())) {
+						return (boolean) e.getValue().invoke(this.getInstance(e.getValue().getDeclaringClass()),
+								sender, command, args);
+					} else {
+						sender.sendMessage(e.getKey().getPermissionMessage());
+						return true;
+					}
+				}
+			}
+			for (Map.Entry<Base, Method> e : map.entrySet()) {
+				if (e.getKey().getSubCommand().equals("")) {
 					if (sender.hasPermission(e.getKey().getPermission())) {
 						return (boolean) e.getValue().invoke(this.getInstance(e.getValue().getDeclaringClass()),
 								sender, command, args);
@@ -94,12 +104,12 @@ public class RegistManager {
 	}
 
 	public void registerCommand(String command, String description, String usageMessage, String permission,
-	                            String permissionMessage) throws ReflectiveOperationException {
+								String permissionMessage) throws ReflectiveOperationException {
 		this.registerCommand(command, description, usageMessage, permission, permissionMessage, new String[0]);
 	}
 
 	public void registerCommand(String command, String description, String usageMessage, String permission,
-	                            String permissionMessage, String... aliases) throws ReflectiveOperationException {
+								String permissionMessage, String... aliases) throws ReflectiveOperationException {
 		Base base = new Base(command, description, usageMessage, Arrays.asList(aliases), permission,
 				permissionMessage);
 		this.getCommandMap().register(this.getPlugin().getName(), base.toPluginCommand(this));
@@ -237,7 +247,7 @@ public class RegistManager {
 
 		private static Constructor<?> constructor;
 
-		public PluginCommand toPluginCommand(RegistManager manager) throws ReflectiveOperationException {
+		public PluginCommand toPluginCommand(EasyRegister manager) throws ReflectiveOperationException {
 			if (constructor == null)
 				constructor = PluginCommand.class.getDeclaredConstructor(String.class, Plugin.class);
 			constructor.setAccessible(true);
