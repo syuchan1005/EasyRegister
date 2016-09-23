@@ -36,20 +36,13 @@ public class EasyRegister {
 	private Plugin pl;
 	private Map<String, Map<Base, Method>> Commands = new HashMap<>();
 	private static Method commandMapMethod = null;
-	private static List<File> addonFile = new ArrayList<>();
 
 	public EasyRegister(Plugin plugin) throws ReflectiveOperationException, IOException {
 		this.pl = plugin;
 		loadClasses(new File(plugin.getClass().getProtectionDomain().getCodeSource().getLocation().getFile()), true);
 	}
 
-	public EasyRegister(Plugin plugin, File jarFile) throws ReflectiveOperationException, IOException {
-		this.pl = plugin;
-		loadClasses(jarFile, false);
-	}
-
 	public void loadClasses(File jarFile, boolean isPluginJar) throws IOException, ReflectiveOperationException {
-		addonFile.add(jarFile);
 		JarFile jar = null;
 		try {
 			jar = new JarFile(jarFile);
@@ -145,10 +138,6 @@ public class EasyRegister {
 
 	public Plugin getPlugin() {
 		return this.pl;
-	}
-
-	public List<File> getAddonFile() {
-		return addonFile;
 	}
 
 	private Object getInstance(Class clazz) throws ReflectiveOperationException {
@@ -283,3 +272,4 @@ public class EasyRegister {
 
 	}
 }
+
