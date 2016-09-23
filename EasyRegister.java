@@ -35,6 +35,7 @@ import java.util.jar.JarFile;
 public class EasyRegister {
 	private Plugin pl;
 	private Map<String, Map<Base, Method>> Commands = new HashMap<>();
+	private static Method commandMapMethod = null;
 	private static List<File> addonFile = new ArrayList<>();
 
 	public EasyRegister(Plugin plugin) throws ReflectiveOperationException, IOException {
@@ -211,8 +212,6 @@ public class EasyRegister {
 		boolean value() default true;
 	}
 
-	private static Method commandMapMethod = null;
-
 	private SimpleCommandMap getCommandMap() throws ReflectiveOperationException {
 		Server server = this.getPlugin().getServer();
 		if (commandMapMethod == null) {
@@ -223,18 +222,25 @@ public class EasyRegister {
 	}
 
 	static class Base extends Command {
+		private static Constructor<?> pluginCommand;
 		private String subCommand;
 
 		public Base(AddCommand a) {
-			this(a.Command(), a.Description(), a.Usage(), Arrays.asList(a.Aliases()), a.Permission(), a.PermissionMessage());
-			this.setSubCommand(a.subCommand());
+			this(a.Command(), a.Description(), a.Usage(), Arrays.asList(a.Aliases())
+					, a.Permission(), a.PermissionMessage(), a.subCommand());
 		}
 
-		public Base(String command, String description, String usageMessage, List<String> aliases, String Permission, String PermissionMessage) {
+		public Base(String command, String description, String usageMessage, List<String> aliases,
+					String Permission, String PermissionMessage) {
+			this(command, description, usageMessage, aliases, Permission, PermissionMessage, "");
+		}
+
+		public Base(String command, String description, String usageMessage, List<String> aliases,
+					String Permission, String PermissionMessage, String SubCommand) {
 			super(command, description, usageMessage, aliases);
 			this.setPermission(Permission);
 			this.setPermissionMessage(PermissionMessage);
-			this.setSubCommand("");
+			this.setSubCommand(SubCommand);
 		}
 
 		public String getSubCommand() {
@@ -245,18 +251,15 @@ public class EasyRegister {
 			this.subCommand = subCommand;
 		}
 
-		private static Constructor<?> constructor;
-
 		public PluginCommand toPluginCommand(EasyRegister manager) throws ReflectiveOperationException {
-			if (constructor == null)
-				constructor = PluginCommand.class.getDeclaredConstructor(String.class, Plugin.class);
-			constructor.setAccessible(true);
-			PluginCommand cmd = (PluginCommand) constructor.newInstance(this.getName(), manager.getPlugin());
-			cmd.setDescription(this.getDescription());
-			cmd.setUsage(this.getUsage());
-			cmd.setAliases(this.getAliases());
+			if (pluginCommand == null) {
+				pluginCommand = PluginCommand.class.getDeclaredConstructor(String.class, Plugin.class);
+				pluginCommand.setAccessible(true);
+			}
+			PluginCommand cmd = ((PluginCommand) pluginCommand.newInstance(this.getName(), manager.getPlugin()));
+			cmd.setDescription(this.getDescription()).setUsage(this.getUsage())
+					.setAliases(this.getAliases()).setPermissionMessage(this.getPermissionMessage());
 			cmd.setPermission(this.getPermission());
-			cmd.setPermissionMessage(this.getPermissionMessage());
 			cmd.setExecutor((sender, command, label, args) -> {
 				try {
 					return manager.run(sender, command, args);
@@ -280,4 +283,3 @@ public class EasyRegister {
 
 	}
 }
-
