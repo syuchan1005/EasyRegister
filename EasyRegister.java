@@ -30,23 +30,22 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 public class EasyRegister {
-	private Plugin pl;
-	private Map<String, Map<Base, Method>> Commands = new HashMap<>();
+	private final Plugin pl;
+	private final Map<String, Map<Base, Method>> Commands = new HashMap<>();
 	private static Method commandMapMethod = null;
 
 	public EasyRegister(Plugin plugin) throws ReflectiveOperationException, IOException {
 		this.pl = plugin;
 		JarFile jar = null;
 		try {
-			jar = new JarFile(new File(plugin.getClass().getProtectionDomain().getCodeSource().getLocation().getFile()));
+			jar = new JarFile(new File(pl.getClass().getProtectionDomain().getCodeSource().getLocation().getFile()));
 			ClassLoader loader = this.getClass().getClassLoader();
 			PluginManager pluginManager = this.getPlugin().getServer().getPluginManager();
 			for (JarEntry e : Collections.list(jar.entries())) {
 				String className = e.getName();
 				if (!className.endsWith(".class")) continue;
 				Class<?> clazz = loader.loadClass(className.replace('/', '.').substring(0, className.length() - 6));
-				if (hasListener(clazz))
-					pluginManager.registerEvents((Listener) this.getInstance(clazz), this.getPlugin());
+				if (hasListener(clazz)) pluginManager.registerEvents((Listener)this.getInstance(clazz), pl);
 				for (Method method : clazz.getMethods()) {
 					EasyRegister.AddCommand addCommand = hasCommand(method);
 					if (addCommand != null) this.putMap(new Base(addCommand), method);
@@ -57,7 +56,7 @@ public class EasyRegister {
 		}
 	}
 
-	public boolean run(CommandSender sender, Command command, String[] args) throws ReflectiveOperationException {
+	private boolean run(CommandSender sender, Command command, String[] args) throws ReflectiveOperationException {
 		if (Commands.containsKey(command.getName().toLowerCase())) {
 			Map<Base, Method> map = Commands.get(command.getName().toLowerCase());
 			if (args.length != 0) {
@@ -147,7 +146,7 @@ public class EasyRegister {
 		Class clazz[] = method.getParameterTypes();
 		if (clazz.length == 3 && clazz[0] == CommandSender.class && clazz[1] == Command.class
 				&& clazz[2] == String[].class && method.getReturnType().equals(boolean.class)) {
-			return (AddCommand) method.getAnnotation(AddCommand.class);
+			return method.getAnnotation(AddCommand.class);
 		}
 		return null;
 	}
@@ -172,8 +171,7 @@ public class EasyRegister {
 
 	private static boolean hasListener(Class clazz) {
 		AddListener listener = (AddListener) clazz.getAnnotation(AddListener.class);
-		if (listener == null || !listener.value()) return false;
-		return Arrays.stream(clazz.getInterfaces()).anyMatch(c -> c.equals(Listener.class));
+		return !(listener == null || !listener.value()) && Arrays.stream(clazz.getInterfaces()).anyMatch(c -> c.equals(Listener.class));
 	}
 
 	@Retention(RetentionPolicy.RUNTIME)
