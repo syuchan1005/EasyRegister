@@ -30,56 +30,38 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 public class EasyRegister {
-	private final Plugin pl;
-	private final Map<String, Map<Base, Method>> Commands = new HashMap<>();
+	private final Plugin plugin;
+	private final Map<String, Map<BaseCommand, Method>> commandMap = new HashMap<>();
 	private static Method commandMapMethod = null;
 
-	public EasyRegister(Plugin plugin) throws ReflectiveOperationException, IOException {
-		this.pl = plugin;
-		JarFile jar = null;
-		try {
-			jar = new JarFile(new File(pl.getClass().getProtectionDomain().getCodeSource().getLocation().getFile()));
-			ClassLoader loader = this.getClass().getClassLoader();
-			PluginManager pluginManager = this.getPlugin().getServer().getPluginManager();
+	public EasyRegister(Plugin plugin) throws ReflectiveOperationException {
+		this.plugin = plugin;
+		ClassLoader loader = this.getClass().getClassLoader();
+		PluginManager pluginManager = this.getPlugin().getServer().getPluginManager();
+		try (JarFile jar = new JarFile(new File(this.plugin.getClass().getProtectionDomain().getCodeSource().getLocation().getFile()))) {
 			for (JarEntry e : Collections.list(jar.entries())) {
 				String className = e.getName();
 				if (!className.endsWith(".class")) continue;
 				Class<?> clazz = loader.loadClass(className.replace('/', '.').substring(0, className.length() - 6));
-				if (hasListener(clazz)) pluginManager.registerEvents((Listener)this.getInstance(clazz), pl);
+				if (hasListener(clazz)) pluginManager.registerEvents((Listener) this.getInstance(clazz), this.plugin);
 				for (Method method : clazz.getMethods()) {
 					EasyRegister.AddCommand addCommand = hasCommand(method);
-					if (addCommand != null) this.putMap(new Base(addCommand), method);
+					if (addCommand != null) this.putMap(new BaseCommand(addCommand), method);
 				}
 			}
-		} finally {
-			if (jar != null) jar.close();
+		} catch (Exception e) {
+			e.printStackTrace();
 		}
 	}
 
 	private boolean run(CommandSender sender, Command command, String[] args) throws ReflectiveOperationException {
-		if (Commands.containsKey(command.getName().toLowerCase())) {
-			Map<Base, Method> map = Commands.get(command.getName().toLowerCase());
-			if (args.length != 0) {
-				for (Map.Entry<Base, Method> e : map.entrySet()) {
-					String sub = args[0].toLowerCase();
-					if (e.getKey().getName().equalsIgnoreCase(command.getName()) &&
-							(e.getKey().getSubCommand().equals(sub) ||
-									e.getKey().getAliases().stream().anyMatch(a -> a.equalsIgnoreCase(sub)))) {
-						if (sender.hasPermission(e.getKey().getPermission())) {
-							return (boolean) e.getValue().invoke(this.getInstance(e.getValue().getDeclaringClass()),
-									sender, command, args);
-						} else {
-							sender.sendMessage(e.getKey().getPermissionMessage());
-							return true;
-						}
-					}
-				}
-			}
-			for (Map.Entry<Base, Method> e : map.entrySet()) {
-				if (e.getKey().getSubCommand().equals("")) {
+		if (commandMap.containsKey(command.getName().toLowerCase())) {
+			Map<BaseCommand, Method> map = commandMap.get(command.getName().toLowerCase());
+			if (args.length != 0) args = new String[] {""};
+			for (Map.Entry<BaseCommand, Method> e : map.entrySet()) {
+				if (e.getKey().isThisCommand(command.getName(), args[0].toLowerCase())) {
 					if (sender.hasPermission(e.getKey().getPermission())) {
-						return (boolean) e.getValue().invoke(this.getInstance(e.getValue().getDeclaringClass()),
-								sender, command, args);
+						return (boolean) e.getValue().invoke(this.getInstance(e.getValue().getDeclaringClass()), sender, command, args);
 					} else {
 						sender.sendMessage(e.getKey().getPermissionMessage());
 						return true;
@@ -90,40 +72,39 @@ public class EasyRegister {
 		return false;
 	}
 
-	public void registerCommand(String command, String description, String usageMessage, String permission, String permissionMessage) throws ReflectiveOperationException {
-		this.registerCommand(command, description, usageMessage, permission, permissionMessage, new String[0]);
+	public void registerYmlCommand(String command) {
+		Bukkit.getPluginCommand(command).setExecutor((sender, cmd, c, args) -> {
+			try {
+				return run(sender, cmd, args);
+			} catch (ReflectiveOperationException e) {
+				e.printStackTrace();
+			}
+			return false;
+		});
 	}
 
-	public void registerCommand(String command, String description, String usageMessage, String permission, String permissionMessage, String... aliases) throws ReflectiveOperationException {
-		Base base = new Base(command, description, usageMessage, Arrays.asList(aliases), permission, permissionMessage);
-		this.getCommandMap().register(this.getPlugin().getName(), base.toPluginCommand(this));
+	public void registerNewCommand(String command, String description, String usageMessage, String permission, String permissionMessage) throws ReflectiveOperationException {
+		registerNewCommand(command, description, usageMessage, permission, permissionMessage, new String[0]);
+	}
+
+	public void registerNewCommand(String command, String description, String usageMessage, String permission, String permissionMessage, String... aliases) throws ReflectiveOperationException {
+		BaseCommand base = new BaseCommand(command, description, usageMessage, Arrays.asList(aliases), permission, permissionMessage);
+		this.getSimpleCommandMap().register(this.getPlugin().getName(), base.toPluginCommand(this));
 	}
 
 	public void sendHelpMessage(CommandSender sender, String command) {
-		if (Commands.containsKey(command.toLowerCase())) {
+		if (commandMap.containsKey(command.toLowerCase())) {
 			StringBuilder sb = new StringBuilder().append("-----Help-----\n");
-			for (Map.Entry<Base, Method> e : Commands.get(command.toLowerCase()).entrySet()) {
-				Base base = e.getKey();
-				String sub = base.getSubCommand();
-				if (!(sub.isEmpty() || sub.equalsIgnoreCase("help"))) {
-					sb.append(sub);
-					if (base.getAliases().size() >= 1) {
-						sb.append('(');
-						for (String alias : base.getAliases()) {
-							sb.append(alias).append(',');
-						}
-						sb.setLength(sb.length() - 1);
-						sb.append(')');
-					}
-					sb.append(" : ").append(base.getUsage()).append("\n");
-				}
+			for (Map.Entry<BaseCommand, Method> e : commandMap.get(command.toLowerCase()).entrySet()) {
+				sb.append(e.getKey().createHelpMessage());
+				sb.append("\n");
 			}
 			sender.sendMessage(sb.toString());
 		}
 	}
 
 	public Plugin getPlugin() {
-		return this.pl;
+		return this.plugin;
 	}
 
 	private Object getInstance(Class clazz) throws ReflectiveOperationException {
@@ -137,9 +118,9 @@ public class EasyRegister {
 		return clazz.newInstance();
 	}
 
-	private void putMap(Base base, Method method) {
-		if (!Commands.containsKey(base.getName())) Commands.put(base.getName(), new HashMap<>());
-		Commands.get(base.getName()).put(base, method);
+	private void putMap(BaseCommand base, Method method) {
+		if (!commandMap.containsKey(base.getName())) commandMap.put(base.getName(), new HashMap<>());
+		commandMap.get(base.getName()).put(base, method);
 	}
 
 	private static AddCommand hasCommand(Method method) {
@@ -149,6 +130,20 @@ public class EasyRegister {
 			return method.getAnnotation(AddCommand.class);
 		}
 		return null;
+	}
+
+	private static boolean hasListener(Class clazz) {
+		AddListener listener = (AddListener) clazz.getAnnotation(AddListener.class);
+		return !(listener == null || !listener.value()) && Arrays.asList(clazz.getInterfaces()).contains(Listener.class);
+	}
+
+	private SimpleCommandMap getSimpleCommandMap() throws ReflectiveOperationException {
+		Server server = this.getPlugin().getServer();
+		if (commandMapMethod == null) {
+			commandMapMethod = server.getClass().getDeclaredMethod("getSimpleCommandMap");
+			commandMapMethod.setAccessible(true);
+		}
+		return (SimpleCommandMap) commandMapMethod.invoke(server);
 	}
 
 	@Retention(RetentionPolicy.RUNTIME)
@@ -169,41 +164,27 @@ public class EasyRegister {
 		String Usage() default "Not added";
 	}
 
-	private static boolean hasListener(Class clazz) {
-		AddListener listener = (AddListener) clazz.getAnnotation(AddListener.class);
-		return !(listener == null || !listener.value()) && Arrays.stream(clazz.getInterfaces()).anyMatch(c -> c.equals(Listener.class));
-	}
-
 	@Retention(RetentionPolicy.RUNTIME)
 	@Target(ElementType.TYPE)
 	public @interface AddListener {
 		boolean value() default true;
 	}
 
-	private SimpleCommandMap getCommandMap() throws ReflectiveOperationException {
-		Server server = this.getPlugin().getServer();
-		if (commandMapMethod == null) {
-			commandMapMethod = server.getClass().getDeclaredMethod("getCommandMap");
-			commandMapMethod.setAccessible(true);
-		}
-		return (SimpleCommandMap) commandMapMethod.invoke(server);
-	}
-
-	static class Base extends Command {
+	private static class BaseCommand extends Command {
 		private static Constructor<?> pluginCommand;
 		private String subCommand;
 
-		public Base(AddCommand a) {
+		BaseCommand(AddCommand a) {
 			this(a.Command(), a.Description(), a.Usage(), Arrays.asList(a.Aliases())
 					, a.Permission(), a.PermissionMessage(), a.subCommand());
 		}
 
-		public Base(String command, String description, String usageMessage, List<String> aliases,
+		BaseCommand(String command, String description, String usageMessage, List<String> aliases,
 					String Permission, String PermissionMessage) {
 			this(command, description, usageMessage, aliases, Permission, PermissionMessage, "");
 		}
 
-		public Base(String command, String description, String usageMessage, List<String> aliases,
+		BaseCommand(String command, String description, String usageMessage, List<String> aliases,
 					String Permission, String PermissionMessage, String SubCommand) {
 			super(command, description, usageMessage, aliases);
 			this.setPermission(Permission);
@@ -219,7 +200,21 @@ public class EasyRegister {
 			this.subCommand = subCommand;
 		}
 
-		public PluginCommand toPluginCommand(EasyRegister manager) throws ReflectiveOperationException {
+		boolean isThisCommand(String cmd, String sub) {
+			return getName().equalsIgnoreCase(cmd) &&
+					(subCommand.equals(sub) || getAliases().stream().anyMatch(sub::equalsIgnoreCase));
+		}
+
+		String createHelpMessage() {
+			String str = subCommand;
+			if (!getAliases().isEmpty()) {
+				str += "(" + String.join(", ", getAliases()) + ")";
+			}
+			str += " : " + getUsage();
+			return str;
+		}
+
+		PluginCommand toPluginCommand(EasyRegister manager) throws ReflectiveOperationException {
 			if (pluginCommand == null) {
 				pluginCommand = PluginCommand.class.getDeclaredConstructor(String.class, Plugin.class);
 				pluginCommand.setAccessible(true);
@@ -240,14 +235,8 @@ public class EasyRegister {
 		}
 
 		@Override
-		public String getName() {
-			return super.getName().toLowerCase();
-		}
-
-		@Override
 		public boolean execute(CommandSender sender, String arg1, String[] args) {
 			return true;
 		}
-
 	}
 }
